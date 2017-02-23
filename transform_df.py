@@ -6,22 +6,6 @@ import nltk
 from nltk.corpus import stopwords #For stopwords
 import numpy as np
 
-
-def get_clean_data():
-    '''
-    '''
-    data = pd.read_pickle('top_posts831.pkl')
-    df = data.drop_duplicates(['com_id'], keep = 'first').set_index('com_id')
-    df = df.loc[:,['sub_text','com_text','com_delta_received', 'com_delta_from_op', 'com_upvotes']]
-    df['com_delta_from_op']= df['com_delta_from_op'].apply(lambda x: False if x==None else x==True)
-
-    df.dropna(axis=0, how='any', inplace = True)
-
-    return(df)
-
-
-# Jensen-Shannon Divergence
-
 stop_words_nltk = stopwords.words('english')
 #stop_words = ["the","it","she","he", "a"] #Uncomment this line if you want to use your own list of stopwords.
 
@@ -49,56 +33,27 @@ def normlizeTokens(tokenLst, stopwordLst = None, stemmer = None, lemmer = None):
         workingIter = (w for w in workingIter if w not in stopwordLst)
     #We will return a list with the stopwords removed
     return list(workingIter)
+
+def get_clean_data():
+    '''
+    '''
+    data = pd.read_pickle('top_posts831.pkl')
+    df = data.drop_duplicates(['com_id'], keep = 'first').set_index('com_id')
+    df = df.loc[:,['sub_text','com_text','com_delta_received', 'com_delta_from_op', 'com_upvotes']]
+    df['com_delta_from_op']= df['com_delta_from_op'].apply(lambda x: False if x==None else x==True)
+
+    df.dropna(axis=0, how='any', inplace = True)
+    df = df[(df['com_text']!='[deleted]')&(df['com_text']!='[removed]')]
+
+    return(df)
+
+df = get_clean_data()
+df['tokenized_com'] = df['com_text'].apply(lambda x: nltk.word_tokenize(x))
+df['normalized_com'] = df['tokenized_com'].apply(lambda x: normlizeTokens(x, stopwordLst = stop_words_nltk, stemmer = snowball))
+
+df['tokenized_sub'] = df['sub_text'].apply(lambda x: nltk.word_tokenize(x))
+df['normalized_sub'] = df['tokenized_sub'].apply(lambda x: normlizeTokens(x, stopwordLst = stop_words_nltk, stemmer = snowball))
+
+df.to_pickle("cmv_data.pkl")
     
 
-# From http://stackoverflow.com/questions/15880133/jensen-shannon-divergence
-def jsdiv(P, Q):
-    """Compute the Jensen-Shannon divergence between two probability distributions.
-
-    Input
-    -----
-    P, Q : array-like
-        Probability distributions of equal length that sum to 1
-    """
-
-    def _kldiv(A, B):
-        return np.sum([v for v in A * np.log2(A/B) if not np.isnan(v)])
-
-    P = np.array(P)
-    Q = np.array(Q)
-
-    M = 0.5 * (P + Q)
-
-    return 0.5 * (_kldiv(P, M) +_kldiv(Q, M))
-
-
-def make_prob_array(norm_toks, overlap_dict):
-        count_list = [0] * len(overlap_dict)
-
-        for tok in norm_toks:
-            try:
-                count_list[overlap_dict[tok]] += 1
-            except KeyError:
-                pass
-        count_array = np.array(count_list)
-        return(count_array / count_array.sum())
-
-
-def calc_JS_divergence(string1, string2):
-    '''
-    Calculates the Jensen Shannon Divergence between two sets of strings
-    '''
-    norm_toks1 = normlizeTokens(nltk.word_tokenize(string1), stopwordLst = stop_words_nltk, stemmer =  snowball)
-    norm_toks2 = normlizeTokens(nltk.word_tokenize(string2), stopwordLst = stop_words_nltk, stemmer =  snowball)
-    
-    words1 = set(norm_toks1)
-    words2 = set(norm_toks2)
-
-    overlap_words = words1 & words2
-    overlap_words_dict = {word: index for index, word in enumerate(overlap_words)}
-
-    prob1 = make_prob_array(norm_toks1, overlap_words_dict)
-    prob2 = make_prob_array(norm_toks2, overlap_words_dict)
-
-    js_div = jsdiv(prob1, prob2)
-    return(js_div)
